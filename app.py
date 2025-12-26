@@ -8,6 +8,7 @@ Designed to be called from an iOS Shortcut for one-tap door unlocking.
 import os
 import json
 import asyncio
+import base64
 from pathlib import Path
 from functools import wraps
 
@@ -24,6 +25,7 @@ API_KEY = os.environ.get('API_KEY', '')
 RING_USERNAME = os.environ.get('RING_USERNAME', '')
 RING_PASSWORD = os.environ.get('RING_PASSWORD', '')
 INTERCOM_NAME = os.environ.get('INTERCOM_NAME', '')
+RING_TOKEN = os.environ.get('RING_TOKEN', '')  # Base64 encoded token JSON
 
 # Token storage path (use /data for Render's persistent disk, fallback to local)
 if os.path.exists('/data'):
@@ -33,6 +35,9 @@ else:
 
 # User agent for Ring API
 USER_AGENT = "RingUnlockServer-1.0"
+
+# Global variable to store the latest token for display
+_latest_token_b64 = None
 
 
 def require_api_key(f):
@@ -49,19 +54,50 @@ def require_api_key(f):
 
 
 def token_updated(token):
-    """Callback to save updated token to file."""
-    TOKEN_FILE.write_text(json.dumps(token))
-    print(f"Token saved to {TOKEN_FILE}")
+    """Callback to save updated token."""
+    global _latest_token_b64
+    
+    # Save to file (works if persistent storage available)
+    try:
+        TOKEN_FILE.write_text(json.dumps(token))
+        print(f"Token saved to {TOKEN_FILE}")
+    except Exception as e:
+        print(f"Could not save token to file: {e}")
+    
+    # Also encode as base64 for environment variable storage
+    token_json = json.dumps(token)
+    token_b64 = base64.b64encode(token_json.encode()).decode()
+    _latest_token_b64 = token_b64
+    
+    # Log the token for manual env var update (important for free tier!)
+    print(f"\n{'='*60}")
+    print("TOKEN UPDATED! Copy this value to your RING_TOKEN env var:")
+    print(f"{'='*60}")
+    print(token_b64)
+    print(f"{'='*60}\n")
 
 
 def get_cached_token():
-    """Load cached token from file if it exists."""
+    """Load cached token from environment variable or file."""
+    global RING_TOKEN
+    
+    # First, try environment variable (most reliable for Render free tier)
+    if RING_TOKEN:
+        try:
+            token_json = base64.b64decode(RING_TOKEN.encode()).decode()
+            return json.loads(token_json)
+        except Exception as e:
+            print(f"Error decoding RING_TOKEN env var: {e}")
+    
+    # Fallback to file
     if TOKEN_FILE.is_file():
         try:
             return json.loads(TOKEN_FILE.read_text())
         except (json.JSONDecodeError, Exception) as e:
             print(f"Error reading token file: {e}")
+    
     return None
+
 
 
 async def get_ring_client():
@@ -641,7 +677,7 @@ def setup_verify_2fa():
             <style>
                 body {
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    max-width: 500px;
+                    max-width: 600px;
                     margin: 0 auto;
                     padding: 20px;
                     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -655,9 +691,39 @@ def setup_verify_2fa():
                     padding: 24px;
                     border: 1px solid rgba(255,255,255,0.1);
                     text-align: center;
+                    margin-bottom: 20px;
                 }
                 .success-icon { font-size: 64px; margin-bottom: 16px; }
                 a { color: #64b5f6; }
+                .warning {
+                    background: rgba(255,152,0,0.2);
+                    border: 1px solid #ff9800;
+                    padding: 16px;
+                    border-radius: 8px;
+                    text-align: left;
+                    margin-top: 16px;
+                }
+                .token-box {
+                    background: rgba(0,0,0,0.4);
+                    padding: 12px;
+                    border-radius: 8px;
+                    word-break: break-all;
+                    font-family: monospace;
+                    font-size: 11px;
+                    margin: 12px 0;
+                    text-align: left;
+                    max-height: 100px;
+                    overflow-y: auto;
+                }
+                button {
+                    background: #00c853;
+                    color: #000;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                }
             </style>
         </head>
         <body>
@@ -665,12 +731,23 @@ def setup_verify_2fa():
                 <div class="success-icon">🎉</div>
                 <h1>All Set!</h1>
                 <p>Your Ring account is connected and ready to use!</p>
-                <p>You can now create your iOS Shortcut.</p>
-                <p><a href="/">← Back to Home</a></p>
+                
+                {% if token_b64 %}
+                <div class="warning">
+                    <strong>⚠️ Important for Render Free Tier:</strong>
+                    <p>To keep authentication working after server restarts, add this as an environment variable in Render:</p>
+                    <p><strong>Name:</strong> <code>RING_TOKEN</code></p>
+                    <p><strong>Value:</strong></p>
+                    <div class="token-box" id="token">{{ token_b64 }}</div>
+                    <button onclick="navigator.clipboard.writeText(document.getElementById('token').innerText); this.innerText='Copied!';">Copy Token</button>
+                </div>
+                {% endif %}
+                
+                <p style="margin-top: 20px;"><a href="/">← Back to Home</a></p>
             </div>
         </body>
         </html>
-        ''')
+        ''', token_b64=_latest_token_b64)
     else:
         return render_template_string('''
         <!DOCTYPE html>
