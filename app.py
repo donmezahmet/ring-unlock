@@ -89,7 +89,7 @@ async def find_intercom(ring):
     devices = ring.devices()
     
     # RingDevices has attributes like: doorbots, chimes, stickup_cams, other
-    # Intercoms are typically in 'other' or have their own attribute
+    # Intercoms are typically in 'other' category
     all_devices = []
     
     # Collect all devices from the RingDevices object
@@ -105,34 +105,43 @@ async def find_intercom(ring):
     # Also try the video_doorbells and all_devices attributes
     if hasattr(devices, 'video_doorbells'):
         all_devices.extend(devices.video_doorbells)
-    if hasattr(devices, 'all_devices'):
-        all_devices.extend(devices.all_devices)
         
     # Try devices_combined if available
     if hasattr(devices, 'devices_combined'):
-        all_devices = devices.devices_combined
+        all_devices = list(devices.devices_combined)
     
-    # Find intercom devices
+    # If INTERCOM_NAME is set, find that specific device by name
+    if INTERCOM_NAME:
+        for device in all_devices:
+            if hasattr(device, 'name') and device.name.lower() == INTERCOM_NAME.lower():
+                return device
+    
+    # Otherwise, look for devices that could be intercoms
+    # Ring Intercoms are in 'other' category, so check for:
+    # 1. Devices with 'intercom' in type/family/name
+    # 2. Devices in 'other' family (likely intercoms)
     intercom_devices = []
+    other_devices = []
+    
     for device in all_devices:
         device_type = str(type(device)).lower()
         device_family = getattr(device, 'family', '').lower() if hasattr(device, 'family') else ''
         device_name = getattr(device, 'name', '').lower() if hasattr(device, 'name') else ''
         
+        # Explicit intercom detection
         if 'intercom' in device_type or 'intercom' in device_family or 'intercom' in device_name:
             intercom_devices.append(device)
+        # Ring Intercoms are categorized as 'other'
+        elif device_family == 'other':
+            other_devices.append(device)
     
-    if not intercom_devices:
-        return None
+    # Prefer explicit intercoms, fallback to 'other' devices
+    if intercom_devices:
+        return intercom_devices[0]
+    elif other_devices:
+        return other_devices[0]
     
-    # If a specific name is configured, find it
-    if INTERCOM_NAME:
-        for intercom in intercom_devices:
-            if hasattr(intercom, 'name') and intercom.name.lower() == INTERCOM_NAME.lower():
-                return intercom
-    
-    # Return the first one found
-    return intercom_devices[0] if intercom_devices else None
+    return None
 
 
 async def unlock_door_async():
