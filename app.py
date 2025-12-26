@@ -88,20 +88,39 @@ async def find_intercom(ring):
     """Find the Ring Intercom device."""
     devices = ring.devices()
     
-    # Look for intercoms
-    intercoms = devices.get('other', [])
+    # RingDevices has attributes like: doorbots, chimes, stickup_cams, other
+    # Intercoms are typically in 'other' or have their own attribute
+    all_devices = []
     
-    # Filter to only intercom devices
-    intercom_devices = [d for d in intercoms if 'intercom' in d.family.lower()]
+    # Collect all devices from the RingDevices object
+    if hasattr(devices, 'other'):
+        all_devices.extend(devices.other)
+    if hasattr(devices, 'doorbots'):
+        all_devices.extend(devices.doorbots)
+    if hasattr(devices, 'stickup_cams'):
+        all_devices.extend(devices.stickup_cams)
+    if hasattr(devices, 'chimes'):
+        all_devices.extend(devices.chimes)
     
-    if not intercom_devices:
-        # Also check in all devices for anything with 'intercom' in the name
-        all_devices = []
-        for device_type in devices.values():
-            if isinstance(device_type, list):
-                all_devices.extend(device_type)
+    # Also try the video_doorbells and all_devices attributes
+    if hasattr(devices, 'video_doorbells'):
+        all_devices.extend(devices.video_doorbells)
+    if hasattr(devices, 'all_devices'):
+        all_devices.extend(devices.all_devices)
         
-        intercom_devices = [d for d in all_devices if 'intercom' in str(type(d)).lower() or 'intercom' in d.name.lower()]
+    # Try devices_combined if available
+    if hasattr(devices, 'devices_combined'):
+        all_devices = devices.devices_combined
+    
+    # Find intercom devices
+    intercom_devices = []
+    for device in all_devices:
+        device_type = str(type(device)).lower()
+        device_family = getattr(device, 'family', '').lower() if hasattr(device, 'family') else ''
+        device_name = getattr(device, 'name', '').lower() if hasattr(device, 'name') else ''
+        
+        if 'intercom' in device_type or 'intercom' in device_family or 'intercom' in device_name:
+            intercom_devices.append(device)
     
     if not intercom_devices:
         return None
@@ -109,7 +128,7 @@ async def find_intercom(ring):
     # If a specific name is configured, find it
     if INTERCOM_NAME:
         for intercom in intercom_devices:
-            if intercom.name.lower() == INTERCOM_NAME.lower():
+            if hasattr(intercom, 'name') and intercom.name.lower() == INTERCOM_NAME.lower():
                 return intercom
     
     # Return the first one found
@@ -130,10 +149,16 @@ async def unlock_door_async():
             # List all devices for debugging
             devices = ring.devices()
             device_list = []
-            for device_type, device_items in devices.items():
-                if isinstance(device_items, list):
-                    for d in device_items:
-                        device_list.append(f"{device_type}: {d.name} ({d.family})")
+            
+            # Collect device info for debugging
+            all_devices = getattr(devices, 'devices_combined', [])
+            if not all_devices and hasattr(devices, 'other'):
+                all_devices = devices.other
+            
+            for d in all_devices:
+                name = getattr(d, 'name', 'Unknown')
+                family = getattr(d, 'family', 'Unknown')
+                device_list.append(f"{name} ({family})")
             
             return False, f"No intercom found. Available devices: {device_list}"
         
