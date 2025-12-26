@@ -330,6 +330,122 @@ def health():
     })
 
 
+@app.route('/get-token')
+@require_api_key
+def get_token():
+    """Get the current token as base64 for environment variable storage."""
+    token = get_cached_token()
+    if not token:
+        return render_template_string('''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>No Token - Ring Unlock Server</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    max-width: 500px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                    min-height: 100vh;
+                    color: #fff;
+                }
+                .card {
+                    background: rgba(255,255,255,0.1);
+                    backdrop-filter: blur(10px);
+                    border-radius: 16px;
+                    padding: 24px;
+                    border: 1px solid rgba(255,255,255,0.1);
+                }
+                a { color: #64b5f6; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>❌ No Token Found</h1>
+                <p>No authentication token is stored. Please authenticate first.</p>
+                <p><a href="/setup">→ Go to Setup</a></p>
+            </div>
+        </body>
+        </html>
+        ''')
+    
+    # Encode token as base64
+    token_json = json.dumps(token)
+    token_b64 = base64.b64encode(token_json.encode()).decode()
+    
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Ring Token - Ring Unlock Server</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                min-height: 100vh;
+                color: #fff;
+            }
+            .card {
+                background: rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border-radius: 16px;
+                padding: 24px;
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+            .token-box {
+                background: rgba(0,0,0,0.4);
+                padding: 12px;
+                border-radius: 8px;
+                word-break: break-all;
+                font-family: monospace;
+                font-size: 11px;
+                margin: 12px 0;
+                max-height: 150px;
+                overflow-y: auto;
+            }
+            button {
+                background: #00c853;
+                color: #000;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                font-size: 16px;
+            }
+            button:hover { background: #00e676; }
+            a { color: #64b5f6; }
+            .info {
+                background: rgba(100,181,246,0.2);
+                border: 1px solid #64b5f6;
+                padding: 12px;
+                border-radius: 8px;
+                margin-bottom: 16px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>🔑 Your Ring Token</h1>
+            <div class="info">
+                Copy this value and add it as <strong>RING_TOKEN</strong> environment variable in Render.
+            </div>
+            <div class="token-box" id="token">{{ token_b64 }}</div>
+            <button onclick="navigator.clipboard.writeText(document.getElementById('token').innerText); this.innerText='✓ Copied!';">Copy Token</button>
+            <p style="margin-top: 20px;"><a href="/">← Back to Home</a></p>
+        </div>
+    </body>
+    </html>
+    ''', token_b64=token_b64)
+
+
 @app.route('/unlock', methods=['GET', 'POST'])
 @require_api_key
 def unlock():
