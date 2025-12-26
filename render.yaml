@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ring-unlock
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: API_KEY
+        sync: false
+      - key: RING_USERNAME
+        sync: false
+      - key: RING_PASSWORD
+        sync: false
+      - key: INTERCOM_NAME
+        sync: false
+    disk:
+      name: token-storage
+      mountPath: /data
+      sizeGB: 1
